@@ -48,14 +48,22 @@ Usage:
               each CA.
     $0 ca [caname]
               Creates a new CA.
-    $0 gencert [caname] certfqdn
+    $0 gencert [certfqdn [caname]]
               Creates a new certification for a given fqdn signed by a
               managed CA.
     $0 cert certfqdn
               Ouputs a certificate to stdout
     $0 git 
 EOF
-    exit 0
+}
+
+fail()
+{
+    exec 2>&1
+    help
+    echo ""
+    echo $*
+    exit 1
 }
 
 # Executes a git command in the store folder, only if git command is
@@ -63,7 +71,7 @@ EOF
 git_exec()
 {
     which git >& /dev/null || return 0
-    git -C ${ssl_store_folder} "$@"
+    git -C "${ssl_store_folder}" "$@"
 }
 
 cmd_usage()
@@ -73,13 +81,16 @@ cmd_usage()
 
 cmd_init()
 {
-    if [ -d ${ssl_store_folder} ]
+    if [ -d "${ssl_store_folder}" ]
     then
         echo "${ssl_store_folder} already exists, please remove if you really want to init a new" 2>&1
         exit 1
     fi
-    mkdir -p ${ssl_store_folder}
+    mkdir -p "${ssl_store_folder}"
     git_exec init
+    echo '*.old' > "${ssl_store_folder}/.gitignore"
+    git_exec add .gitignore
+    git_exec commit -m "Initialised SSL store"
     exit 0
 }
 
@@ -88,13 +99,171 @@ cmd_version()
     version
 }
 
+gen_cnf()
+{
+    cnffile="$1"
+    CN="$2"
+    tmpfile=`mktemp`
+    cat ${cnffile} | sed "s/@@CN@@/$CN/" > $tmpfile
+    echo $tmpfile
+}
+
 cmd_ca()
 {
+    caname="$*"
+    if [ -z "$caname" ]
+    then
+        echo "Enter a name for your new CA"
+        read caname
+    fi
+    # check for existence
+    cafolder="${ssl_store_folder}/$caname"
+    if [ -d "$cafolder" ]
+    then
+        echo "CA $caname already exists" 2>&1
+        exit 1
+    fi
+
+    mkdir -p "$cafolder"
+    echo 1000 > "$cafolder/serial"
+    touch "$cafolder/certindex.txt"
+    mkdir -p "$cafolder/certs"
+    touch "$cafolder/certs/.placeholder"
+    mkdir -p "$cafolder/private"
+    echo "What is the name of the service using this CA [${caname}]?"
+    read caservice
+    if [ -z "$caservice" ]
+    then
+        caservice=$caname
+    fi
+    echo "What is your country (2 letters internaltional code)?"
+    read cacountry
+    echo "What is your state or province?"
+    read castate
+    echo "What is your city?"
+    read cacity
+    echo "What is the email adresse of the administrator of this CA?"
+    read caemail
+    
+    # Creates configuration file template for openssl
+    cat > "$cafolder/ca.cnf" <<EOF
+#
+# OpenSSL configuration file.
+#
+ 
+# Establish working directory.
+ 
+dir					= $cafolder
+ 
+[ ca ]
+default_ca				= CA_default
+ 
+[ CA_default ]
+serial					= \$dir/serial
+database				= \$dir/certindex.txt
+new_certs_dir				= \$dir/certs
+certificate				= \$dir/cacert.pem
+private_key				= \$dir/private/cakey.pem
+default_days				= 365
+default_md				= sha1
+preserve				= no
+email_in_dn				= no
+nameopt					= default_ca
+certopt					= default_ca
+policy					= policy_match
+ 
+[ policy_match ]
+countryName				= match
+stateOrProvinceName			= match
+organizationName			= match
+organizationalUnitName			= optional
+commonName				= supplied
+emailAddress				= optional
+ 
+[ req ]
+default_bits				= 4096
+default_keyfile				= key.pem
+default_md				= sha1
+string_mask				= default
+prompt                                  = no
+distinguished_name			= req_distinguished_name
+default_keyfile                         = \$dir/private/cakey.pem
+default_days                            = 3650
+
+
+ 
+[ req_distinguished_name ]
+organizationName		        = ${caname}
+organizationalUnitName		        = ${caservice}
+localityName		   	        = ${cacity}
+stateOrProvinceName        		= ${castate}
+countryName        			= ${cacountry}
+emailAddress        			= ${caemail}
+commonName                              = @@CN@@
+
+# For CA generation 
+[ v3_ca ]
+basicConstraints			= CA:TRUE
+subjectKeyIdentifier			= hash
+authorityKeyIdentifier			= keyid:always,issuer:always
+ 
+# For certs generation
+[ v3_req ]
+basicConstraints			= CA:FALSE
+subjectKeyIdentifier			= hash
+
+EOF
+    # Generate specific cnf file for CA (changes the commonName attribute)
+    cnf=`gen_cnf "${cafolder}/ca.cnf" "${caname}"`
+    openssl req -batch -new -x509 -extensions v3_ca -out "${cafolder}/cacert.pem" -config "${cnf}"
+    rm -f ${cnf}
+    # All goes well, adds to git
+    git_exec add "${cafolder}/ca.cnf" "${cafolder}/certindex.txt" "${cafolder}/certs/.placeholder" "${cafolder}/serial" "${cafolder}/cacert.pem" "${cafolder}/private/cakey.pem"
+    git_exec commit -m "Added CA ${caname}"
     exit 0
+}
+
+list_ca()
+{
+    ls ${ssl_store_folder}
 }
 
 cmd_gencert()
 {
+    fqdn="$1"
+    shift
+    cname="$*"
+    while [ -z "$fqdn" ]
+    do
+        echo "Enter the FQDN of the certificate to generate (e.g. host.domain.name)"
+        read fqdn
+    done
+    while [ -z "$cname" ]
+    do
+        echo "Select the CA to use"
+        select cname in `list_ca`
+        do
+            break
+        done
+    done
+    cafolder="${ssl_store_folder}/${cname}"
+    # Generate specific cnf file for certificate (changes the commonName attribute)
+    cnf=`gen_cnf "${cafolder}/ca.cnf" "${fqdn}"`
+    req="${cafolder}/certs/$fqdn-req.pem"
+    key="${cafolder}/private/$fqdn-key.pem"
+    cert="${cafolder}/certs/$fqdn-cert.pem"
+    # Emit signature request for the new certificate
+    openssl req -batch -new -nodes -out "$req" -keyout "$key" -config "$cnf"
+    # Sign the certificate with the CA
+    openssl ca -batch -config "$cnf" -infiles "$req"
+    # Removes the req file
+    rm -f "$req"
+    # Removes the temp cnf
+    rm -f "$cnf"
+    # Git add everything
+    cert_file=`cat "$cafolder/certindex.txt" | tail -1 | awk '{print \$3;}'`
+    git_exec add "$key" "$cafolder/certs/${cert_file}.pem" "$cafolder/serial" "$cafolder/certindex.txt" "$cafolder/certindex.txt.attr"
+    git_exec commit -m "Adds certificate $fqdn to CA $cname"
     exit 0
 }
 
@@ -105,7 +274,7 @@ cmd_cert()
 
 cmd_git()
 {
-    exit 0
+    git_exec "$@"
 }
 
 cmd_ls()
@@ -113,9 +282,20 @@ cmd_ls()
     exit 0
 }
 
+# Sets a paranoid umask for this script
+umask 077
+
 case "$1" in
     init) shift;               cmd_init "$@";;
     help|-h|--help) shift;     cmd_usage "$@";;
+esac
+
+if ! [ -d "${ssl_store_folder}" ]
+then
+    fail "You must first call $0 init command"
+fi
+    
+case "$1" in
     version|--version) shift;  cmd_version "$@";;
     ca) shift;                 cmd_ca "$@";;
     gencert) shift;            cmd_gencert "$@";;
