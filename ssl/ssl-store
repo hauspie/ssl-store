@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Michael Hauspie <michael.hauspie@univ-lille1.fr>
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# config values
+# For each CA managed, all data needed will be stored in a subfolder of this one, named after the ca name
+ssl_store_folder=${HOME}/.ssl-store
+
+# version
+version=0.0
+
+
+version()
+{
+    cat <<EOF
+ssl-store ${version}
+Copyright (C) 2015 Michaël Hauspie
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+EOF
+}
+
+help()
+{
+    exec 2>&1
+    version
+    cat <<EOF
+
+Usage:
+    $0 init
+              Initialize new ssl storage. If git command is installed,
+              it will initialize it as a git repository.
+    $0 [ls] [-v]
+              List managed CA. With -v, also lists certificates for
+              each CA.
+    $0 ca [caname]
+              Creates a new CA.
+    $0 gencert [caname] certfqdn
+              Creates a new certification for a given fqdn signed by a
+              managed CA.
+    $0 cert certfqdn
+              Ouputs a certificate to stdout
+    $0 git 
+EOF
+    exit 0
+}
+
+# Executes a git command in the store folder, only if git command is
+# available, otherwise fails silently
+git_exec()
+{
+    which git >& /dev/null || return 0
+    git -C ${ssl_store_folder} "$@"
+}
+
+cmd_usage()
+{
+    help
+}
+
+cmd_init()
+{
+    if [ -d ${ssl_store_folder} ]
+    then
+        echo "${ssl_store_folder} already exists, please remove if you really want to init a new" 2>&1
+        exit 1
+    fi
+    mkdir -p ${ssl_store_folder}
+    git_exec init
+    exit 0
+}
+
+cmd_version()
+{
+    version
+}
+
+cmd_ca()
+{
+    exit 0
+}
+
+cmd_gencert()
+{
+    exit 0
+}
+
+cmd_cert()
+{
+    exit 0
+}
+
+cmd_git()
+{
+    exit 0
+}
+
+cmd_ls()
+{
+    exit 0
+}
+
+case "$1" in
+    init) shift;               cmd_init "$@";;
+    help|-h|--help) shift;     cmd_usage "$@";;
+    version|--version) shift;  cmd_version "$@";;
+    ca) shift;                 cmd_ca "$@";;
+    gencert) shift;            cmd_gencert "$@";;
+    cert) shift;               cmd_cert "$@";;
+    git)  shift;               cmd_git "$@";;
+    ls|*)                      cmd_ls  "$@";;
+esac
+exit 0        
