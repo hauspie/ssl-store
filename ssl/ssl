@@ -51,7 +51,7 @@ Usage:
     $0 gencert [certfqdn [caname]]
               Creates a new certification for a given fqdn signed by a
               managed CA.
-    $0 cert certfqdn
+    $0 cert [certfqdn]
               Ouputs a certificate to stdout
     $0 git 
 EOF
@@ -267,8 +267,53 @@ cmd_gencert()
     exit 0
 }
 
+# 
+get_fqdn_from_cert()
+{
+    cert="$1"
+    openssl x509 -subject -in "$1" -out /dev/null | sed -e 's@.*/CN=@@'
+}
+
+get_pem_files()
+{
+    for ca in `list_ca`
+    do
+        ls ${ssl_store_folder}/$ca/certs/*.pem 2> /dev/null
+    done
+}
+
+output_cert()
+{
+    cert="$1"
+    openssl x509 -in "$1"
+}
+
 cmd_cert()
 {
+    fqdn="$1"
+
+    # Retrieve available fqdns
+    declare -A pems
+    for pem in `get_pem_files`
+    do
+        pemfqdn=`get_fqdn_from_cert $pem`
+        pems["$pemfqdn"]=$pem
+    done
+
+    # If none provided, ask for one
+    if [ -z "$fqdn" ]
+    then
+        PS3="Select FQDN> "
+        select fqdn in ${!pems[@]}
+        do
+            break
+        done
+    fi
+    if ! [ -f ${pems[$fqdn]} ]
+    then
+        fail "Can not find pem file for $fqdn"
+    fi
+    output_cert ${pems[$fqdn]}
     exit 0
 }
 
