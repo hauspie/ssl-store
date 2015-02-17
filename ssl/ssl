@@ -52,8 +52,10 @@ Usage:
               Creates a new certification for a given fqdn signed by a
               managed CA.
     $0 cert [certfqdn]
-              Ouputs a certificate to stdout
-    $0 git 
+              Ouputs a certificate to stdout.
+    $0 git git-args...
+              Runs the git command in the store folder.
+
 EOF
 }
 
