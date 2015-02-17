@@ -20,7 +20,7 @@
 ssl_store_folder=${HOME}/.ssl-store
 
 # version
-version=0.0
+version=0.1
 
 
 version()
@@ -53,6 +53,8 @@ Usage:
               managed CA.
     $0 cert [certfqdn]
               Ouputs a certificate to stdout.
+    $0 key [certfqdn]
+              Ouputs the private key of a fqdn certificate.
     $0 git git-args...
               Runs the git command in the store folder.
 
@@ -284,6 +286,14 @@ get_pem_files()
     done
 }
 
+get_key_files()
+{
+    for ca in `list_ca`
+    do
+        ls ${ssl_store_folder}/$ca/private/*-key.pem 2> /dev/null
+    done        
+}
+
 output_cert()
 {
     cert="$1"
@@ -319,6 +329,43 @@ cmd_cert()
     exit 0
 }
 
+fqdn_to_key()
+{
+    fqdn="$1"
+    shift
+    for ca in `list_ca`
+    do
+        if [ -f ${ssl_store_folder}/$ca/private/${fqdn}-key.pem ]
+        then
+            echo ${ssl_store_folder}/$ca/private/${fqdn}-key.pem
+            return 0
+        fi
+    done
+}
+
+cmd_key()
+{
+    fqdn="$1"
+    fqdn_key_file=`fqdn_to_key $fqdn`
+
+    # No fqdn or non available fqdn
+    if ! [ -f "$fqdn_key_file" ]
+    then
+        fqdns=""
+        for key in `get_key_files`
+        do
+            fqdn=`basename "$key" | sed 's/-key.pem//'`
+            fqdns="$fqdn $fqdns"
+        done
+        select fqdn in $fqdns
+        do
+            fqdn_key_file=`fqdn_to_key $fqdn`
+            break
+        done
+    fi
+    cat $fqdn_key_file
+}
+
 cmd_git()
 {
     git_exec "$@"
@@ -347,6 +394,7 @@ case "$1" in
     ca) shift;                 cmd_ca "$@";;
     gencert) shift;            cmd_gencert "$@";;
     cert) shift;               cmd_cert "$@";;
+    key)  shift;               cmd_key "$@";;
     git)  shift;               cmd_git "$@";;
     ls|*)                      cmd_ls  "$@";;
 esac
