@@ -2,7 +2,7 @@ SSL Store
 =========
 
 This is a helper script to ease the management of certificates and CA.
-It was inspired by the pass, the standard unix password manager.
+It was inspired by **pass**, the standard unix password manager.
 
 It eases the creation of multiple CA and the process of signing
 certificates for several fqdns.
