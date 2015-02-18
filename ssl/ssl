@@ -16,8 +16,11 @@
 
 
 # config values
+
+test -f $HOME/.sslstorerc && . $HOME/.sslstorerc
+
 # For each CA managed, all data needed will be stored in a subfolder of this one, named after the ca name
-ssl_store_folder=${HOME}/.ssl-store
+ssl_store_folder=${ssl_store_folder:-${HOME}/.ssl-store}
 
 # version
 version=0.1
