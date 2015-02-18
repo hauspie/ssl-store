@@ -32,9 +32,13 @@ Usage
   Creates a new certification for a given fqdn signed by a
   managed CA.
 * `ssl cert [certfqdn]`
-  Ouputs a certificate to stdout.
+  Outputs a certificate to stdout.
+* `ssl cacert [caname]`
+  Outputs a CA certificate to stdout.
 * `ssl key [certfqdn]`
-  Ouputs the private key of a fqdn certificate.
+  Outputs the private key of a fqdn certificate.
+* `ssl cakey [caname]`
+  Outputs the private key of a CA certificate.
 * `ssl git git-args...`
   Runs the git command in the store folder.
 
