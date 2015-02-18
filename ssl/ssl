@@ -14,7 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
 # config values
 
 # Read values from config file
@@ -42,8 +41,8 @@ EOF
 
 help()
 {
-    exec 2>&1
-    version
+    exec 1>&2
+    version 
     cat <<EOF
 
 Usage:
@@ -59,22 +58,47 @@ Usage:
               Creates a new certification for a given fqdn signed by a
               managed CA.
     $0 cert [certfqdn]
-              Ouputs a certificate to stdout.
+              Outputs a certificate.
+    $0 cacert [caname]
+              Outputs a CA's certificate.
     $0 key [certfqdn]
-              Ouputs the private key of a fqdn certificate.
+              Outputs the private key of a fqdn certificate.
+    $0 cakey [caname]
+              Outputs the private key of a CA.
     $0 git git-args...
               Runs the git command in the store folder.
 
 EOF
 }
 
+# Utility functions follow
+# Outputs an error message on stderr after the help message
 fail()
 {
-    exec 2>&1
+    exec 1>&2
     help
-    echo ""
-    echo $*
+    echo "" 
+    echo $* 
     exit 1
+}
+
+# Lists all the CA managed in the store
+list_ca()
+{
+    ls ${ssl_store_folder}
+}
+
+# Generate a temporary config file for openssl
+# from a template.
+# $1: template file
+# $2: commonName to use in the req section
+gen_cnf()
+{
+    local cnffile="$1"
+    local CN="$2"
+    local tmpfile=`mktemp`
+    cat ${cnffile} | sed "s/@@CN@@/$CN/" > $tmpfile
+    echo $tmpfile
 }
 
 # Executes a git command in the store folder, only if git command is
@@ -83,6 +107,189 @@ git_exec()
 {
     which git >& /dev/null || return 0
     git -C "${ssl_store_folder}" "$@"
+}
+
+# Extract the fqdn from a certificate pem file
+# $1: path to .pem file
+get_fqdn_from_cert()
+{
+    local cert="$1"
+    openssl x509 -subject -in "$1" -out /dev/null | sed -e 's@.*/CN=@@'
+}
+
+# Outputs all the fqdn private keys paths for a given CA
+# $1: the ca
+get_key_from_ca()
+{
+    local ca="$1"
+    ls ${ssl_store_folder}/$ca/private/*-key.pem 2> /dev/null
+}
+
+# Outputs all the fqdn certificates file paths for a given CA
+# $1: the ca
+get_pem_from_ca()
+{
+    local ca="$1"
+    ls ${ssl_store_folder}/$ca/certs/*.pem 2> /dev/null
+}
+
+# Outputs all the fqdn generated from a given CA
+# $1: the ca
+get_fqdns_from_ca()
+{
+    local ca="$1"
+    local fqdns=""
+    for cert in `get_pem_from_ca $ca`
+    do
+        fqdn=`get_fqdn_from_cert $cert`
+        fqdns="$fqdns $fqdn"
+    done
+    test -z "$fqdns" && return 1
+    echo $fqdns
+}
+
+# Outputs file paths for all the certificates managed in the store
+get_pem_files()
+{
+    for ca in `list_ca`
+    do
+        get_pem_from_ca $ca
+    done
+}
+
+# Outputs file paths for all the privates keys (except the ca key)
+# managed in the store
+get_key_files()
+{
+    for ca in `list_ca`
+    do
+        get_key_from_ca $ca
+    done        
+}
+
+# Outputs a certificate from its path
+# $1: path to the pem file
+output_cert()
+{
+    local cert="$1"
+    openssl x509 -in "$1"
+}
+
+# Outputs the file path of the private key of a given fqdn.
+# Only works well if the fqdn exists only once in the store
+# $1: the fqdn
+fqdn_to_key()
+{
+    local fqdn="$1"
+
+    for ca in `list_ca`
+    do
+        if [ -f ${ssl_store_folder}/$ca/private/${fqdn}-key.pem ]
+        then
+            echo ${ssl_store_folder}/$ca/private/${fqdn}-key.pem
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Outputs the file path of the certificate file for a given fqdn.
+# Only works well if the fqdn exists only once in the store
+# $1: the fqdn
+fqdn_to_pem()
+{
+    local fqdn="$1"
+    for pem in `get_pem_files`
+    do
+        if [ "`get_fqdn_from_cert $pem`" = "$fqdn" ]
+        then
+            echo $pem
+            return 0
+        fi
+    done
+    return 1
+}
+
+
+# returns true if a given fqdn is actually managed by the store
+# $1: fqdn
+check_fqdn()
+{
+    test -z "$1" && return 1
+    # protect *... should probably protect more, but * and . is
+    # likely to be present in a fqdn
+    local fqdn=`echo $1 | sed -e 's/\*/\\\\*/g' -e 's/\./\\\\./g'`
+    for ca in `list_ca`
+    do
+        pattern="(^|\s)$fqdn(\s|\$)"
+        (get_fqdns_from_ca $ca | egrep -q "$pattern") && return 0
+    done
+    return 1
+}
+
+# Outputs a valid fqdn (i.e. which is actually managed in the store)
+# First tries its first parameter and if not good (or not provided)
+# asks the user for a valid fqdn
+# $1: a fqdn (can be empty)
+safe_get_fqdn()
+{
+    local fqdn="$1"
+    if check_fqdn "$fqdn"
+    then
+        echo "$fqdn"
+        return 0
+    fi
+    # fqdn is invalid, propose a list
+    # Retrieve available fqdns
+    local -A pems
+    for pem in `get_pem_files`
+    do
+        pemfqdn=`get_fqdn_from_cert $pem`
+        pems["$pemfqdn"]=$pem
+    done
+    if [ -z "${!pems[@]}" ]
+    then
+        fail "No fqdn in the store"
+        exit 1
+    fi
+    # If none provided, ask for one
+    PS3="Select FQDN> "
+    select fqdn in ${!pems[@]}
+    do
+        test -z "$fqdn" || break
+    done
+    echo "$fqdn"
+}
+
+# Outputs a valid CA (i.e. which is actually managed in the store)
+# First tries its firt parameter and if not good (or not provided)
+# Asks the user for a valid ca
+# $1: a ca name (can be empty)
+safe_get_ca()
+{
+    local ca="$1"
+    if [ ! -z "$ca" -a -d ${ssl_store_folder}/$ca ]
+    then
+        echo "$ca"
+        return 0
+    fi
+    if ! ls ${ssl_store_folder}/* >& /dev/null
+    then
+        fail "No CA in the store"
+        exit 1
+    fi
+    PS3="Select CA> "
+    select ca in `list_ca`
+    do
+        test -z "$ca" || break
+    done
+    echo "$ca"
+}
+
+cmd_debug()
+{
+    safe_get_ca "$1"
+    exit $?
 }
 
 cmd_usage()
@@ -94,7 +301,7 @@ cmd_init()
 {
     if [ -d "${ssl_store_folder}" ]
     then
-        echo "${ssl_store_folder} already exists, please remove if you really want to init a new" 2>&1
+        echo "${ssl_store_folder} already exists, please remove if you really want to init a new" 1>&2
         exit 1
     fi
     mkdir -p "${ssl_store_folder}"
@@ -110,28 +317,20 @@ cmd_version()
     version
 }
 
-gen_cnf()
-{
-    cnffile="$1"
-    CN="$2"
-    tmpfile=`mktemp`
-    cat ${cnffile} | sed "s/@@CN@@/$CN/" > $tmpfile
-    echo $tmpfile
-}
 
 cmd_ca()
 {
-    caname="$*"
+    local caname="$*"
     if [ -z "$caname" ]
     then
         echo "Enter a name for your new CA"
         read caname
     fi
     # check for existence
-    cafolder="${ssl_store_folder}/$caname"
+    local cafolder="${ssl_store_folder}/$caname"
     if [ -d "$cafolder" ]
     then
-        echo "CA $caname already exists" 2>&1
+        echo "CA $caname already exists" 1>&2
         exit 1
     fi
 
@@ -232,35 +431,25 @@ EOF
     exit 0
 }
 
-list_ca()
-{
-    ls ${ssl_store_folder}
-}
 
 cmd_gencert()
 {
-    fqdn="$1"
+    local fqdn="$1"
     shift
-    cname="$*"
+    local cname="$*"
     while [ -z "$fqdn" ]
     do
         echo "Enter the FQDN of the certificate to generate (e.g. host.domain.name)"
         read fqdn
     done
-    while [ -z "$cname" ]
-    do
-        echo "Select the CA to use"
-        select cname in `list_ca`
-        do
-            break
-        done
-    done
-    cafolder="${ssl_store_folder}/${cname}"
+    local cname=`safe_get_ca "$cname"`
+    test -z "$cname" && exit 1
+    local cafolder="${ssl_store_folder}/${cname}"
     # Generate specific cnf file for certificate (changes the commonName attribute)
-    cnf=`gen_cnf "${cafolder}/ca.cnf" "${fqdn}"`
-    req="${cafolder}/certs/$fqdn-req.pem"
-    key="${cafolder}/private/$fqdn-key.pem"
-    cert="${cafolder}/certs/$fqdn-cert.pem"
+    local cnf=`gen_cnf "${cafolder}/ca.cnf" "${fqdn}"`
+    local req="${cafolder}/certs/$fqdn-req.pem"
+    local key="${cafolder}/private/$fqdn-key.pem"
+    local cert="${cafolder}/certs/$fqdn-cert.pem"
     # Emit signature request for the new certificate
     openssl req -batch -new -nodes -out "$req" -keyout "$key" -config "$cnf"
     # Sign the certificate with the CA
@@ -270,127 +459,28 @@ cmd_gencert()
     # Removes the temp cnf
     rm -f "$cnf"
     # Git add everything
-    cert_file=`cat "$cafolder/certindex.txt" | tail -1 | awk '{print \$3;}'`
+    local cert_file=`cat "$cafolder/certindex.txt" | tail -1 | awk '{print \$3;}'`
     git_exec add "$key" "$cafolder/certs/${cert_file}.pem" "$cafolder/serial" "$cafolder/certindex.txt" "$cafolder/certindex.txt.attr"
     git_exec commit -m "Adds certificate $fqdn to CA $cname"
     exit 0
 }
 
-# 
-get_fqdn_from_cert()
-{
-    cert="$1"
-    openssl x509 -subject -in "$1" -out /dev/null | sed -e 's@.*/CN=@@'
-}
-
-get_key_from_ca()
-{
-    ca="$1"
-    ls ${ssl_store_folder}/$ca/private/*-key.pem 2> /dev/null
-}
-get_pem_from_ca()
-{
-    ca="$1"
-    ls ${ssl_store_folder}/$ca/certs/*.pem 2> /dev/null
-}
-
-get_fqdns_from_ca()
-{
-    ca="$1"
-    fqdns=""
-    for key in `get_key_from_ca $ca`
-    do
-        fqdn=`basename $key | sed 's/-key.pem//'`
-        fqdns="$fqdns $fqdn"
-    done
-    echo $fqdns
-}
-
-get_pem_files()
-{
-    for ca in `list_ca`
-    do
-        get_pem_from_ca $ca
-    done
-}
-
-get_key_files()
-{
-    for ca in `list_ca`
-    do
-        get_key_from_ca $ca
-    done        
-}
-
-output_cert()
-{
-    cert="$1"
-    openssl x509 -in "$1"
-}
 
 cmd_cert()
 {
-    fqdn="$1"
-
-    # Retrieve available fqdns
-    declare -A pems
-    for pem in `get_pem_files`
-    do
-        pemfqdn=`get_fqdn_from_cert $pem`
-        pems["$pemfqdn"]=$pem
-    done
-
-    # If none provided, ask for one
-    if [ -z "$fqdn" ]
-    then
-        PS3="Select FQDN> "
-        select fqdn in ${!pems[@]}
-        do
-            break
-        done
-    fi
-    if ! [ -f ${pems[$fqdn]} ]
-    then
-        fail "Can not find pem file for $fqdn"
-    fi
-    output_cert ${pems[$fqdn]}
-    exit 0
-}
-
-fqdn_to_key()
-{
-    fqdn="$1"
-    shift
-    for ca in `list_ca`
-    do
-        if [ -f ${ssl_store_folder}/$ca/private/${fqdn}-key.pem ]
-        then
-            echo ${ssl_store_folder}/$ca/private/${fqdn}-key.pem
-            return 0
-        fi
-    done
+    local fqdn=`safe_get_fqdn "$1"`
+    test -z "$fqdn" && exit 1
+    local pem=`fqdn_to_pem "$fqdn"`
+    output_cert "$pem"
+    exit $?
 }
 
 cmd_key()
 {
-    fqdn="$1"
+    local fqdn=`safe_get_fqdn "$1"`
+    test -z "$fqdn" && exit 1
     fqdn_key_file=`fqdn_to_key $fqdn`
 
-    # No fqdn or non available fqdn
-    if ! [ -f "$fqdn_key_file" ]
-    then
-        fqdns=""
-        for key in `get_key_files`
-        do
-            fqdn=`basename "$key" | sed 's/-key.pem//'`
-            fqdns="$fqdn $fqdns"
-        done
-        select fqdn in $fqdns
-        do
-            fqdn_key_file=`fqdn_to_key $fqdn`
-            break
-        done
-    fi
     cat $fqdn_key_file
 }
 
@@ -437,6 +527,9 @@ case "$1" in
     cert) shift;               cmd_cert "$@";;
     key)  shift;               cmd_key "$@";;
     git)  shift;               cmd_git "$@";;
+    debug) shift;              cmd_debug "$@";;
+    cacert) shift;             cmd_cacert "$@";;
+    cakey) shift;              cmd_cakey  "$@";;
     ls)   shift;               cmd_ls  "$@";;
     *)                         cmd_ls  "$@";;
 esac
