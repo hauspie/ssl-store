@@ -17,10 +17,14 @@
 
 # config values
 
+# Read values from config file
 test -f $HOME/.sslstorerc && . $HOME/.sslstorerc
 
+# Defaults
 # For each CA managed, all data needed will be stored in a subfolder of this one, named after the ca name
 ssl_store_folder=${ssl_store_folder:-${HOME}/.ssl-store}
+ca_validity_days=${ca_validity_days:-3650}
+cert_validity_days=${cert_validity_days:-365}
 
 # version
 version=0.1
@@ -171,7 +175,6 @@ database				= \$dir/certindex.txt
 new_certs_dir				= \$dir/certs
 certificate				= \$dir/cacert.pem
 private_key				= \$dir/private/cakey.pem
-default_days				= 365
 default_md				= sha1
 preserve				= no
 email_in_dn				= no
@@ -195,7 +198,6 @@ string_mask				= default
 prompt                                  = no
 distinguished_name			= req_distinguished_name
 default_keyfile                         = \$dir/private/cakey.pem
-default_days                            = 3650
 
 
  
@@ -222,7 +224,7 @@ subjectKeyIdentifier			= hash
 EOF
     # Generate specific cnf file for CA (changes the commonName attribute)
     cnf=`gen_cnf "${cafolder}/ca.cnf" "${caname}"`
-    openssl req -batch -new -x509 -extensions v3_ca -out "${cafolder}/cacert.pem" -config "${cnf}"
+    openssl req -batch -new -x509 -extensions v3_ca -days ${ca_validity_days} -out "${cafolder}/cacert.pem" -config "${cnf}"
     rm -f ${cnf}
     # All goes well, adds to git
     git_exec add "${cafolder}/ca.cnf" "${cafolder}/certindex.txt" "${cafolder}/certs/.placeholder" "${cafolder}/serial" "${cafolder}/cacert.pem" "${cafolder}/private/cakey.pem"
@@ -262,7 +264,7 @@ cmd_gencert()
     # Emit signature request for the new certificate
     openssl req -batch -new -nodes -out "$req" -keyout "$key" -config "$cnf"
     # Sign the certificate with the CA
-    openssl ca -batch -config "$cnf" -infiles "$req"
+    openssl ca -batch -days ${cert_validity_days} -config "$cnf" -infiles "$req"
     # Removes the req file
     rm -f "$req"
     # Removes the temp cnf
