@@ -58,7 +58,7 @@ values are:
 to `$HOME/.ssl-store`.
 * `ca_validity_days`: the validity period, in days, of the generated
   CA certificates. Defaults to `3650`
-  * `cert_validity_days`: the validity period, in days, of the generated
+* `cert_validity_days`: the validity period, in days, of the generated
   certificates. Defaults to `365`
 
 Store structure
