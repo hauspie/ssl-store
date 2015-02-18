@@ -484,6 +484,20 @@ cmd_key()
     cat $fqdn_key_file
 }
 
+cmd_cacert()
+{
+    local ca=`safe_get_ca "$1"`
+    test -z "$ca" && exit 1
+    output_cert ${ssl_store_folder}/$ca/cacert.pem
+}
+
+cmd_cakey()
+{
+    local ca=`safe_get_ca "$1"`
+    test -z "$ca" && exit 1
+    cat ${ssl_store_folder}/$ca/private/cakey.pem
+}
+
 cmd_git()
 {
     git_exec "$@"
