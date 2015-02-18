@@ -40,6 +40,7 @@ Missing functionalities
 The current version is very simple and does not allow:
 * Revoking certificates
 * Import existing certificates
+* Generate certificates with subject alternative names
 
 However, the structure of the store is straightforward and theses
 operation can be done by using openssl directly until I implement them.
