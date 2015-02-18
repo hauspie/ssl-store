@@ -67,7 +67,7 @@ Store structure
 inits the folder as a git repository. If you create a CA named `MyCA`
 and generate a  certificate the store structure will be:
 
-    .
+    .ssl-store
     └── MyCA
         ├── cacert.pem
         ├── ca.cnf
