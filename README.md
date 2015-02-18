@@ -38,24 +38,31 @@ Missing functionalities
 =======================
 
 The current version is very simple and does not allow:
-* Changing the expiration date on the certificates (default is 10 years for CA and 1 year for certificates)
 * Revoking certificates
 * Import existing certificates
 
 However, the structure of the store is straightforward and theses
 operation can be done by using openssl directly until I implement them.
 
+Store configuration
+===================
+
+The `ssl` script can read its configuration from the file
+`$HOME/.sslstorec`. This file only needed if you want to change the
+default behavior. The config file is a script that will be sourced
+when `ssl` starts. Thus the syntax is standard shell (`bash` actually)
+syntax to set variables. The available variables and their default
+values are:
+
+* `ssl_store_folder`: the folder where the store is located. Defaults
+to `$HOME/.ssl-store`.
+* `ca_validity_days`: the validity period, in days, of the generated
+  CA certificates. Defaults to `3650`
+  * `cert_validity_days`: the validity period, in days, of the generated
+  certificates. Defaults to `365`
+
 Store structure
 ===============
-
-The store is stored by default `$HOME/.ssl-store`. If you want to
-change this, you must create a file name `$HOME/.sslstorerc` that sets
-the variable `ssl_store_folder`. This file is sourced by `ssl` and
-uses the default only if the variable `ssl_store_folder` is not set.
-For example:
-
-    ssl_store_folder=${HOME}/ssl/mysslstore
-
 `ssl init` creates the folder and, if the `git` command is available,
 inits the folder as a git repository. If you create a CA named `MyCA`
 and generate a  certificate the store structure will be:
