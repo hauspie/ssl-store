@@ -7,6 +7,10 @@ It was inspired by **pass**, the standard unix password manager.
 It eases the creation of multiple CA and the process of signing
 certificates for several fqdns.
 
+This script is just a wrapper to openssl. It uses defaults that suit
+my needs which may be not suitable to yours. Feel free to propose patches
+to enhance it.
+
 If the git command is available on your system, the command
 automatically manage the certificate store as a git repository. It
 thus commit any new generated CA and certificates helping you to share
@@ -41,6 +45,10 @@ The current version is very simple and does not allow:
 * Revoking certificates
 * Import existing certificates
 * Generate certificates with subject alternative names
+* No extensive tests are run and command invocation can lead to
+  openssl errors. For example, requesting a certificate for a fqdn
+  that already has one will generate the key but fail to output the
+  certificate.
 
 However, the structure of the store is straightforward and theses
 operation can be done by using openssl directly until I implement them.
