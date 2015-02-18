@@ -283,11 +283,34 @@ get_fqdn_from_cert()
     openssl x509 -subject -in "$1" -out /dev/null | sed -e 's@.*/CN=@@'
 }
 
+get_key_from_ca()
+{
+    ca="$1"
+    ls ${ssl_store_folder}/$ca/private/*-key.pem 2> /dev/null
+}
+get_pem_from_ca()
+{
+    ca="$1"
+    ls ${ssl_store_folder}/$ca/certs/*.pem 2> /dev/null
+}
+
+get_fqdns_from_ca()
+{
+    ca="$1"
+    fqdns=""
+    for key in `get_key_from_ca $ca`
+    do
+        fqdn=`basename $key | sed 's/-key.pem//'`
+        fqdns="$fqdns $fqdn"
+    done
+    echo $fqdns
+}
+
 get_pem_files()
 {
     for ca in `list_ca`
     do
-        ls ${ssl_store_folder}/$ca/certs/*.pem 2> /dev/null
+        get_pem_from_ca $ca
     done
 }
 
@@ -295,7 +318,7 @@ get_key_files()
 {
     for ca in `list_ca`
     do
-        ls ${ssl_store_folder}/$ca/private/*-key.pem 2> /dev/null
+        get_key_from_ca $ca
     done        
 }
 
@@ -378,6 +401,19 @@ cmd_git()
 
 cmd_ls()
 {
+    verbose="$1"
+    echo "Available CA in store:"
+    for ca in `list_ca`
+    do
+        echo $ca
+        if [ "$verbose" = "-v" ]
+        then
+            for fqdn in `get_fqdns_from_ca $ca`
+            do
+                echo "  $fqdn"
+            done
+        fi
+    done
     exit 0
 }
 
@@ -401,6 +437,7 @@ case "$1" in
     cert) shift;               cmd_cert "$@";;
     key)  shift;               cmd_key "$@";;
     git)  shift;               cmd_git "$@";;
-    ls|*)                      cmd_ls  "$@";;
+    ls)   shift;               cmd_ls  "$@";;
+    *)                         cmd_ls  "$@";;
 esac
 exit 0        
