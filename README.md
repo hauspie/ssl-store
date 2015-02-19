@@ -20,8 +20,12 @@ store!).
 
 Usage
 =====
+* `ssl help`
+  Displays this help message
+* `ssl version`
+  Displays the version of the script
 * `ssl init`
-  Initialize new ssl storage. If git command is installed,
+  Initializes new ssl storage. If git command is installed,
   it will initialize it as a git repository.
 * `ssl [ls] [-v]`
   List managed CA. With -v, also lists certificates for
