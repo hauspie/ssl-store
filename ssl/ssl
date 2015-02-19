@@ -16,6 +16,7 @@
 
 # config values
 
+
 # Read values from config file
 test -f $HOME/.sslstorerc && . $HOME/.sslstorerc
 
@@ -24,6 +25,11 @@ test -f $HOME/.sslstorerc && . $HOME/.sslstorerc
 ssl_store_folder=${ssl_store_folder:-${HOME}/.ssl-store}
 ca_validity_days=${ca_validity_days:-3650}
 cert_validity_days=${cert_validity_days:-365}
+
+if ! [ -z "$SSL_STORE_FOLDER" ]
+then
+    ssl_store_folder="$SSL_STORE_FOLDER"
+fi
 
 # version
 version=0.1

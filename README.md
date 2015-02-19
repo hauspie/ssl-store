@@ -21,9 +21,9 @@ store!).
 Usage
 =====
 * `ssl help`
-  Displays this help message
+  Displays this help message.
 * `ssl version`
-  Displays the version of the script
+  Displays the version of the script.
 * `ssl init`
   Initializes new ssl storage. If git command is installed,
   it will initialize it as a git repository.
@@ -66,17 +66,23 @@ Store configuration
 
 The `ssl` script can read its configuration from the file
 `$HOME/.sslstorec`. This file only needed if you want to change the
-default behavior. The config file is a script that will be sourced
+default behavior. The configuration file is a script that will be sourced
 when `ssl` starts. Thus the syntax is standard shell (`bash` actually)
 syntax to set variables. The available variables and their default
 values are:
 
 * `ssl_store_folder`: the folder where the store is located. Defaults
-to `$HOME/.ssl-store`.
+  to `$HOME/.ssl-store`. However, if the environment variable
+  `SSL_STORE_FOLDER` is defined, it supersedes this settings. This
+  gives a more dynamic way to manage several stores.
+
 * `ca_validity_days`: the validity period, in days, of the generated
   CA certificates. Defaults to `3650`
 * `cert_validity_days`: the validity period, in days, of the generated
   certificates. Defaults to `365`
+
+
+
 
 Store structure
 ===============
